@@ -1,7 +1,7 @@
+use bevy::render::render_resource::Face;
 use bevy::{
   ecs::system::EntityCommands, input::mouse::MouseWheel, prelude::*, sprite::MaterialMesh2dBundle,
 };
-use bevy::render::render_resource::Face;
 
 use std::f32::consts::PI;
 
@@ -55,44 +55,56 @@ const SUN_COLOR: Color = Color::rgb(255.0, 248.0, 224.0);
 const SUN_SHADOW_DEPTH_BIAS: f32 = 2.00;
 const SUN_SHADOW_NORMAL_BIAS: f32 = 2.00;
 
-pub(crate) trait CircleCommandsExt<'w, 's> {
-  fn spawn_circle<'a>(
-    &'a mut self,
-    position: Vec3,
-    radius: f32,
-    color: Color,
-  ) -> EntityCommands<'w, 's, 'a>;
+macro_rules! extend_commands {
+    ($command_name:ident($( $arg:ident: $arg_type:ty ),*), $command_fn:expr) => {
+        pub(crate) trait $command_name<'w, 's> {
+            fn $command_name<'a>(
+                &'a mut self,
+                $($arg: $arg_type),*
+            ) -> EntityCommands<'w, 's, 'a>;
+        }
+
+        impl<'w, 's> $command_name<'w, 's> for Commands<'w, 's> {
+            fn $command_name<'a>(
+                &'a mut self,
+                $($arg: $arg_type),*
+            ) -> EntityCommands<'w, 's, 'a> {
+                let entity = self.spawn_empty();
+                let entity_id = entity.id();
+
+                self.add(move |world: &mut World| {
+                    $command_fn(world, entity_id, $($arg),*);
+                });
+
+                self.entity(entity_id)
+            }
+        }
+    };
 }
 
-impl<'w, 's> CircleCommandsExt<'w, 's> for Commands<'w, 's> {
-  fn spawn_circle<'a>(
-    &'a mut self,
-    position: Vec3,
-    radius: f32,
-    color: Color,
-  ) -> EntityCommands<'w, 's, 'a> {
-    let entity = self.spawn_empty();
-    let entity_id = entity.id();
-
-    self.add(move |world: &mut World| {
-      let mesh = world
-        .resource_mut::<Assets<Mesh>>()
-        .add(shape::Circle::new(radius).into());
-      let material = world
-        .resource_mut::<Assets<ColorMaterial>>()
-        .add(ColorMaterial::from(color));
-
-      world.entity_mut(entity_id).insert(MaterialMesh2dBundle {
-        mesh: mesh.into(),
-        material,
-        transform: Transform::from_translation(position),
+extend_commands!(
+  spawn_circle(position: Vec3, radius: f32, color: Color),
+  |world: &mut World, entity_id: Entity, position: Vec3, radius: f32, color: Color| {
+    let mut mesh = world.resource_mut::<Assets<Mesh>>().add(Mesh::from(shape::UVSphere {
+        radius,
+        sectors: (radius * 8.0).max(PLANET_MIN_QUALITY) as usize,
+        stacks: (radius * 8.0).max(PLANET_MIN_QUALITY) as usize,
+      }));
+    let mut material = world.resource_mut::<Assets<StandardMaterial>>().add(StandardMaterial {
+        base_color: color.into(),
         ..default()
       });
-    });
 
-    self.entity(entity_id)
+    world
+      .entity_mut(entity_id)
+      .insert(PbrBundle {
+      mesh,
+      material,
+      transform: Transform::from_translation(position),
+      ..default()
+    });
   }
-}
+);
 
 fn setup(
   mut commands: Commands,
@@ -101,6 +113,21 @@ fn setup(
   asset_server: Res<AssetServer>,
 ) {
   commands.insert_resource(ClearColor(Color::BLACK));
+  commands.spawn_circle(
+    Vec3::new(PLANET_RADIUS * 1.0 + 5.0, 0.0, 0.0),
+    3.0,
+    Color::rgb(1.0, 0.0, 0.0),
+  );
+  commands.spawn_circle(
+    Vec3::new(0.0, PLANET_RADIUS * 1.0 + 5.0, 0.0),
+    3.0,
+    Color::rgb(1.0, 1.0, 0.0),
+  );
+  commands.spawn_circle(
+    Vec3::new(0.0, 0.0, PLANET_RADIUS * 1.0 + 5.0),
+    3.0,
+    Color::rgb(0.0, 1.0, 0.0),
+  );
   // sun (light)
   commands.spawn(PointLightBundle {
     point_light: PointLight {
