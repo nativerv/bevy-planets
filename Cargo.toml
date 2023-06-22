@@ -1,5 +1,5 @@
 [package]
-name = "bevy-planet"
+name = "bevy-planets"
 version = "0.1.0"
 edition = "2021"
 
